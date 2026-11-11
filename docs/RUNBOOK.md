@@ -31,12 +31,10 @@ ngrok version
 ## 1. Lấy code
 
 ```bash
-git clone https://github.com/bechovang/StorageHub.git
+git clone https://github.com/<your-org-or-username>/StorageHub.git
 cd StorageHub
 
-# Branch PayOS (Task 33) — hoặc master sau khi PR #42 được merge
-git checkout be/payos-task-33
-git pull origin be/payos-task-33
+git checkout master
 ```
 
 ---

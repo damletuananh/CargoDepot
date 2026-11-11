@@ -1,6 +1,6 @@
 # 09 — Kịch bản demo StorageHub (từ đầu đến cuối)
 
-> Kịch bản demo đồ án StorageHub (SWP391). Đã kiểm chứng trên môi trường deploy tại **https://storagehub.phucnn.io.vn** (24/10/2026).
+> Kịch bản demo đồ án StorageHub (SWP391). Đã kiểm chứng trên môi trường phát triển local (Spring Boot + Vite + MySQL 8.4).
 > Tổng thời lượng gợi ý: **25–30 phút**. Có thể cắt bớt role tuỳ thời gian.
 
 ---
@@ -13,7 +13,7 @@
 |---|---|
 | Chrome profile 1 | Customer (`lan@`) — dùng để đặt kho |
 | Chrome profile 2 | Staff / FM / BOPS / Admin (đăng xuất–đăng nhập lần lượt) |
-| Tab phụ | `https://status.phucnn.io.vn`, `https://github.com/bechovang/StorageHub/actions`, Slack `#homeserver-noti` |
+| Tab phụ | Tab GitHub Actions, `http://localhost:8080/actuator/health` |
 | Kết nối | Internet ổn định; PayOS cần mạng ra ngoài |
 
 ### 0.2. Tài khoản seed (mật khẩu chung `password`)
@@ -30,11 +30,10 @@
 ### 0.3. Kiểm tra nhanh trước khi bắt đầu
 
 ```bash
-curl -s https://storagehub.phucnn.io.vn/actuator/health      # {"status":"UP"}
-curl -s -o /dev/null -w '%{http_code}\n' https://storagehub.phucnn.io.vn/
+curl -s http://localhost:8080/actuator/health      # {"status":"UP"}
 ```
 
-Mở sẵn trang status: **7/7 endpoint xanh**. Nếu có endpoint đỏ, xem mục 8.
+Kiểm tra health endpoint: **status: UP**.
 
 ---
 
@@ -42,7 +41,7 @@ Mở sẵn trang status: **7/7 endpoint xanh**. Nếu có endpoint đỏ, xem m�
 
 Nói ngắn gọn khi mở trang:
 
-> “Ứng dụng chạy trên PC cũ tại nhà: Cloudflare Tunnel → Traefik → 3 container (React+nginx, Spring Boot, MySQL). Không mở port router, không lộ IP. Code push lên GitHub là tự build image và deploy, không build trên server.”
+> “Ứng dụng xây dựng theo mô hình Layered Architecture: Frontend React 19 SPA (Vite dev server tại :5173), Backend Spring Boot 4.1.1 REST API (:8080) và MySQL 8.4 local. Mọi pull request và push lên master được tự động kiểm thử qua GitHub Actions CI (Maven test + npm build).”
 
 Có thể mở sơ đồ kiến trúc trong tài liệu hạ tầng của nhóm (nếu có).
 
@@ -52,7 +51,7 @@ Có thể mở sơ đồ kiến trúc trong tài liệu hạ tầng của nhóm 
 
 ### A1. Đăng nhập & landing theo vai trò (1 phút)
 
-1. Mở `https://storagehub.phucnn.io.vn` → tự chuyển `/login`.
+1. Mở `http://localhost:5173` → tự chuyển `/login`.
 2. Đăng nhập `lan@demo.storagehub.vn` / `password`.
 3. Hệ thống điều hướng về **`/browse`** (landing của CUSTOMER).
 4. Chỉ vào header: tên + role, chuông thông báo.
@@ -177,34 +176,27 @@ Khuyến nghị khi demo: dùng **MOMO** để chắc chắn thành công, sau �
 
 ---
 
-## 7. Kịch bản F — DevOps/CI-CD (5 phút, phần “ăn tiền”)
+## 7. Kịch bản F — DevOps/CI-CD (5 phút)
 
-### F1. Pipeline
+### F1. Pipeline CI tự động
 
 1. Mở tab GitHub Actions của repo.
-2. Sửa nhỏ trên máy (ví dụ đổi text trang chủ) → commit vào nhánh → PR → merge.
-3. Chỉ vào run: `backend-test` → `frontend-build` → build 2 image GHCR → `deploy` (Tailscale → Dokploy) → `notify`.
-4. Mở Slack `#homeserver-noti`: tin ✅ CI/CD OK kèm link run.
-5. Mở site: thay đổi đã lên (container image `:sha-<commit>`).
+2. Sửa nhỏ trên máy (ví dụ đổi text trang chủ) → commit vào nhánh → tạo Pull Request.
+3. Chỉ vào run: `backend-test` (Maven test) và `frontend-build` (npm ci + build) chạy song song và độc lập.
+4. Kiểm tra pipeline passed (xanh) trên GitHub Actions.
 
 **Điểm nói:**
-- server **không build**; image bất biến theo commit;
-- compose được **pin `:sha`** trước khi deploy (nếu không `up -d` với `:latest` sẽ không recreate);
-- CI đỏ → không deploy (nhờ `needs`).
+- Mọi pull request và commit vào master đều được tự động hoá chạy toàn bộ unit tests backend và build bundle frontend.
+- Nếu test backend hỏng hoặc frontend build lỗi syntax, pipeline sẽ chặn merge ngay lập tức.
 
-### F2. Rollback
+### F2. Rollback & Quản lý phiên bản
 
-- Trong Dokploy: sửa image tag về `sha-<commit cũ>` → deploy.
-- Hoặc chạy lại workflow của commit cũ.
+- Khi cần quay về bản cũ: dùng `git checkout <commit-sha>` hoặc `git revert` và push lên nhánh.
 
-### F3. Monitoring & backup
+### F3. Vận hành & Giám sát
 
-1. `https://status.phucnn.io.vn` — 7 endpoint, 60s/lần; fail 3 lần → Slack DOWN, hồi phục → RESOLVED.
-2. Backup: 02:30 hằng ngày (`pg_dump` + `mysqldump` + config), Chủ nhật 03:30 restore drill vào DB tạm.
-3. Có thể show nhanh log backup:
-   ```bash
-   ssh homelab 'journalctl -u homelab-backup.service -n 5'
-   ```
+1. Health check backend: `http://localhost:8080/actuator/health` → `{"status":"UP"}`.
+2. Kiểm tra log hệ thống: log trực tiếp trên terminal chạy `mvn spring-boot:run` và terminal `npm run dev`.
 
 ---
 
@@ -216,7 +208,7 @@ Khuyến nghị khi demo: dùng **MOMO** để chắc chắn thành công, sau �
 | Sai mật khẩu | login `wrongpass` | 401 (password < 6 ký tự → 400 validation) |
 | Không có token | mở `/api/v1/units` bằng curl | 401 |
 | Sai quyền | customer mở `/api/v1/users` | 403 `ROLE_FORBIDDEN` |
-| App down | `docker stop` nginx (nếu có quyền) | Gatus báo DOWN sau ~3 phút, Slack nhận tin |
+| Server tắt | tắt tiến trình backend (Ctrl+C) | Frontend hiển thị thông báo không kết nối được |
 
 ---
 
@@ -234,35 +226,32 @@ Khuyến nghị khi demo: dùng **MOMO** để chắc chắn thành công, sau �
 
 ## 10. Checklist trước khi bấm “Start”
 
-- [ ] `health` = UP, status page 7/7 xanh
+- [ ] `health` = UP (`http://localhost:8080/actuator/health`)
 - [ ] Đăng nhập được cả 5 tài khoản
 - [ ] Có ít nhất 1 unit **AVAILABLE** cho ngày demo (hiện còn M-2, L-1, …)
-- [ ] PayOS: kênh **DEMO-MARKETPLACE** hoạt động, webhook URL đúng domain
-- [ ] Slack mở sẵn, tab Actions mở sẵn
+- [ ] PayOS: kênh **DEMO-MARKETPLACE** hoạt động hoặc dùng mock demo
+- [ ] Tab GitHub Actions mở sẵn
 - [ ] Tắt thông báo cá nhân trên máy
-- [ ] Dự phòng: nếu mạng/PayOS lỗi → dùng MOMO demo, không chuyển sang phần DevOps
 
 ## 11. Câu hỏi thường gặp khi demo
 
-**“Dữ liệu có mất khi restart không?”** — Không: MySQL chạy volume trên SSD; backup 02:30 + drill restore.
+**“Dữ liệu có mất khi restart không?”** — Không: MySQL local lưu trữ dữ liệu bền vững trên ổ đĩa.
 
-**“Deploy mất bao lâu?”** — ~2–4 phút (test + build 2 image + deploy), không tính thời gian bạn sửa code.
+**“Bảo mật thế nào?”** — JWT Bearer + phân quyền server-side, mật khẩu mã hoá BCrypt, kiểm tra trạng thái active của user từng request.
 
-**“Bảo mật thế nào?”** — JWT + phân quyền server-side, BCrypt, không mở port router, admin chỉ LAN/Tailscale, tunnel outbound-only. Đây là môi trường demo nên seed công khai — production sẽ tắt seed/đổi mật khẩu.
-
-**“Nếu Cloudflare/PayOS sập?”** — App vẫn chạy nội bộ; truy cập qua LAN/Tailscale. PayOS lỗi thì fallback thanh toán demo.
+**“Nếu mạng/PayOS sập?”** — App vẫn chạy và hỗ trợ phương thức demo nội bộ (MOMO/VNPAY/CARD mock).
 
 ---
 
 ## 12. Phụ lục — lệnh kiểm tra nhanh (khi demo bị “đứng”)
 
 ```bash
-# app
-curl -s https://storagehub.phucnn.io.vn/actuator/health
-# container
-ssh homelab 'docker ps --filter name=storagehub-myzyte'
-# log lỗi backend
-ssh homelab 'docker logs --since 10m $(docker ps -qf name=storagehub-myzyte-backend) | grep -E "ERROR|Exception"'
-# trạng thái monitor
-curl -s https://status.phucnn.io.vn/api/v1/endpoints/statuses | head -c 500
+# app health check
+curl -s http://localhost:8080/actuator/health
+
+# kiểm tra port backend 8080
+netstat -ano | findstr :8080
+
+# kiểm tra port frontend 5173
+netstat -ano | findstr :5173
 ```
